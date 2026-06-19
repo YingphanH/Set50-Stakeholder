@@ -126,7 +126,7 @@ def scrape_and_save_to_csv(limit=5):
     df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
     return df
 
-ddef build_network_graph(df):
+def build_network_graph(df):
     G = nx.Graph()
     
     # 1. ป้องกันปัญหาไฟล์ CSV มีแถวว่าง (Drop NaN)
