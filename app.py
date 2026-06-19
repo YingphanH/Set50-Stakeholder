@@ -12,17 +12,8 @@ import streamlit.components.v1 as components
 from pyvis.network import Network
 from playwright.sync_api import sync_playwright
 
-# ==========================================
-# 1. การตั้งค่าระบบพื้นฐาน
-# ==========================================
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-@st.cache_resource
-def install_playwright():
-    os.system("playwright install chromium")
-
-install_playwright()
 
 CSV_FILE = "set50_shareholders.csv"
 SET50_URL = "https://www.set.or.th/th/market/index/set50/overview"
@@ -40,22 +31,20 @@ def normalize_shareholder_name(name: str) -> str:
     cleaned = cleaned.replace("CO., LTD.", "CO LTD")
     return cleaned.strip(" .")
 
-# ==========================================
-# 2. ฟังก์ชันขูดข้อมูลและบันทึกลง CSV
-# ==========================================
 def scrape_and_save_to_csv(limit=5):
     all_records = []
     
     with sync_playwright() as p:
-        # 🌟 นี่คือส่วนที่แก้ปัญหา TargetClosedError บน Cloud 🌟
+        # 🌟 ไพ่ตาย: ชี้เป้าไปที่ System Chromium ที่ติดตั้งผ่าน packages.txt
+        # และใช้ args ที่เบาที่สุด
+        executable_path = "/usr/bin/chromium" if sys.platform != "win32" else None
+        
         browser = p.chromium.launch(
+            executable_path=executable_path,
             headless=True,
             args=[
                 "--no-sandbox",
-                "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
-                "--single-process",
-                "--no-zygote",
                 "--disable-gpu"
             ]
         )
@@ -137,9 +126,6 @@ def scrape_and_save_to_csv(limit=5):
     df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
     return df
 
-# ==========================================
-# 3. ฟังก์ชันสร้าง Network Graph จาก DataFrame
-# ==========================================
 def build_network_graph(df):
     G = nx.Graph()
     for _, row in df.iterrows():
@@ -173,18 +159,12 @@ def build_network_graph(df):
     """)
     return net
 
-# ==========================================
-# 4. ฟังก์ชันเช็คเวลาแก้ไขไฟล์
-# ==========================================
 def get_file_modified_time(filepath):
     if os.path.exists(filepath):
         timestamp = os.path.getmtime(filepath)
         return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     return "ไม่มีไฟล์"
 
-# ==========================================
-# 5. หน้าจอ UI ของ Streamlit
-# ==========================================
 st.set_page_config(page_title="SET50 Shareholder Network", layout="wide")
 
 with st.sidebar:
