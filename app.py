@@ -126,11 +126,16 @@ def scrape_and_save_to_csv(limit=5):
     df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
     return df
 
-def build_network_graph(df):
+ddef build_network_graph(df):
     G = nx.Graph()
+    
+    # 1. ป้องกันปัญหาไฟล์ CSV มีแถวว่าง (Drop NaN)
+    df = df.dropna(subset=['Symbol', 'Shareholder'])
+    
     for _, row in df.iterrows():
-        symbol = row['Symbol']
-        shareholder = row['Shareholder']
+        # 2. บังคับแปลงชื่อให้เป็น String (str) เสมอ เพื่อให้ Pyvis ยอมรับ
+        symbol = str(row['Symbol']).strip()
+        shareholder = str(row['Shareholder']).strip()
         pct = row['Percentage']
         
         if not G.has_node(symbol):
