@@ -35,8 +35,6 @@ def scrape_and_save_to_csv(limit=5):
     all_records = []
     
     with sync_playwright() as p:
-        # 🌟 ไพ่ตาย: ชี้เป้าไปที่ System Chromium ที่ติดตั้งผ่าน packages.txt
-        # และใช้ args ที่เบาที่สุด
         executable_path = "/usr/bin/chromium" if sys.platform != "win32" else None
         
         browser = p.chromium.launch(
@@ -76,26 +74,29 @@ def scrape_and_save_to_csv(limit=5):
             progress_text.text(f"กำลังดึงข้อมูล: {symbol} ({i+1}/{len(symbols)})")
             url = SHAREHOLDER_URL.format(symbol=symbol)
             page.goto(url, wait_until="domcontentloaded", timeout=120000)
-            page.wait_for_timeout(4000)
             
             try:
+                # 🌟 แก้ปัญหา Skeleton Loader: สั่งให้รอจนกว่า td ช่องชื่อคน จะมีตัวอักษรจริงๆ ไม่ใช่ช่องว่าง 🌟
                 page.wait_for_function(
                     """
                     () => {
                         const rows = Array.from(document.querySelectorAll('[role="tabpanel"] table tbody tr'));
-                        return rows.some(row => row.querySelectorAll('td').length >= 4);
+                        return rows.some(row => {
+                            const tds = row.querySelectorAll('td');
+                            return tds.length >= 4 && tds[1].innerText.trim().length > 2;
+                        });
                     }
                     """,
-                    timeout=20000,
+                    timeout=25000,
                 )
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(1000) # เผื่อเวลาให้เบราว์เซอร์เรนเดอร์ชิ้นส่วนเล็กๆ อีกนิด
                 
                 rows = page.eval_on_selector_all(
                     '[role="tabpanel"] table tbody tr',
                     """
                     nodes => nodes
                         .map(row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim()))
-                        .filter(cols => cols.length >= 4)
+                        .filter(cols => cols.length >= 4 && cols[1].length > 0)
                     """
                 )
                 
@@ -104,12 +105,15 @@ def scrape_and_save_to_csv(limit=5):
                     shareholder_name = normalize_shareholder_name(cols[1])
                     pct = parse_number(cols[3])
                     
-                    all_records.append({
-                        "Symbol": symbol,
-                        "Shareholder": shareholder_name,
-                        "Percentage": pct
-                    })
-                    count += 1
+                    # เช็คอีกชั้นว่าดึงชื่อมาได้จริงๆ (ไม่ใช่ค่าว่าง)
+                    if shareholder_name:
+                        all_records.append({
+                            "Symbol": symbol,
+                            "Shareholder": shareholder_name,
+                            "Percentage": pct
+                        })
+                        count += 1
+                        
                     if count >= 5: 
                         break
                         
@@ -123,17 +127,16 @@ def scrape_and_save_to_csv(limit=5):
         progress_bar.empty()
         
     df = pd.DataFrame(all_records)
+    # กันเหนียว: ลบแถวที่ไม่มีชื่อหุ้นหรือชื่อผู้ถือหุ้นออกให้หมด
+    df = df.dropna(subset=['Symbol', 'Shareholder'])
+    df = df[df['Shareholder'] != ""]
+    
     df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
     return df
 
 def build_network_graph(df):
     G = nx.Graph()
-    
-    # 1. ป้องกันปัญหาไฟล์ CSV มีแถวว่าง (Drop NaN)
-    df = df.dropna(subset=['Symbol', 'Shareholder'])
-    
     for _, row in df.iterrows():
-        # 2. บังคับแปลงชื่อให้เป็น String (str) เสมอ เพื่อให้ Pyvis ยอมรับ
         symbol = str(row['Symbol']).strip()
         shareholder = str(row['Shareholder']).strip()
         pct = row['Percentage']
@@ -195,20 +198,23 @@ st.title("🕸️ SET50 Shareholder Social Network")
 if os.path.exists(CSV_FILE):
     df = pd.read_csv(CSV_FILE)
     
-    col1, col2 = st.columns(2)
-    col1.metric("จำนวนรายการความสัมพันธ์", len(df))
-    col2.metric("จำนวนหุ้นในระบบ", df['Symbol'].nunique())
-    
-    with st.spinner("กำลังเรนเดอร์กราฟ..."):
-        net = build_network_graph(df)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
-            net.save_graph(tmp_file.name)
-            with open(tmp_file.name, 'r', encoding='utf-8') as f:
-                source_code = f.read()
-            components.html(source_code, height=750)
-            
-    with st.expander("📊 ดูข้อมูลดิบจากไฟล์ CSV"):
-        st.dataframe(df, use_container_width=True)
+    if not df.empty:
+        col1, col2 = st.columns(2)
+        col1.metric("จำนวนรายการความสัมพันธ์", len(df))
+        col2.metric("จำนวนหุ้นในระบบ", df['Symbol'].nunique())
+        
+        with st.spinner("กำลังเรนเดอร์กราฟ..."):
+            net = build_network_graph(df)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
+                net.save_graph(tmp_file.name)
+                with open(tmp_file.name, 'r', encoding='utf-8') as f:
+                    source_code = f.read()
+                components.html(source_code, height=750)
+                
+        with st.expander("📊 ดูข้อมูลดิบจากไฟล์ CSV"):
+            st.dataframe(df, use_container_width=True)
+    else:
+        st.error("❌ ไฟล์ CSV มีอยู่แต่ไม่มีข้อมูล (ถูกข้ามจากการดึง) กรุณากดบังคับดึงข้อมูลใหม่อีกครั้ง")
 else:
     st.warning(f"⚠️ ยังไม่พบไฟล์ `{CSV_FILE}` ในระบบ")
     st.info("👈 กรุณากดปุ่ม **'บังคับดึงข้อมูลใหม่ทันที'** ที่เมนูด้านซ้ายเพื่อเริ่มต้นครับ")
