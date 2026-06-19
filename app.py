@@ -47,7 +47,15 @@ def scrape_and_save_to_csv(limit=5):
     all_records = []
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+       browser = p.chromium.launch(
+        headless=True,
+        args=[
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-extensions"
+            ]
+        )
         page = browser.new_page()
         
         # ก. ดึงรายชื่อหุ้น
