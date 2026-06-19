@@ -21,7 +21,6 @@ if sys.platform == "win32":
 @st.cache_resource
 def install_playwright():
     os.system("playwright install chromium")
-    os.system("playwright install-deps")
 
 install_playwright()
 
