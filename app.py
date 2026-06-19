@@ -47,13 +47,16 @@ def scrape_and_save_to_csv(limit=5):
     all_records = []
     
     with sync_playwright() as p:
+        # 🌟 นี่คือส่วนที่แก้ปัญหา TargetClosedError บน Cloud 🌟
         browser = p.chromium.launch(
             headless=True,
             args=[
                 "--no-sandbox",
+                "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-extensions"
+                "--single-process",
+                "--no-zygote",
+                "--disable-gpu"
             ]
         )
         page = browser.new_page()
@@ -131,7 +134,6 @@ def scrape_and_save_to_csv(limit=5):
         progress_bar.empty()
         
     df = pd.DataFrame(all_records)
-    # เขียนทับไฟล์ CSV เดิมทันที
     df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
     return df
 
@@ -188,7 +190,6 @@ st.set_page_config(page_title="SET50 Shareholder Network", layout="wide")
 with st.sidebar:
     st.header("⚙️ จัดการข้อมูล")
     
-    # ดึงเวลาล่าสุดที่ไฟล์ CSV ถูกแก้ไข
     last_updated = get_file_modified_time(CSV_FILE)
     if last_updated != "ไม่มีไฟล์":
         st.success(f"อัปเดตล่าสุด:\n{last_updated}")
@@ -197,7 +198,6 @@ with st.sidebar:
 
     scrape_limit = st.number_input("จำนวนหุ้นที่ต้องการดึง (เทสต์ 5, จริง 50)", min_value=1, max_value=50, value=5)
     
-    # ปุ่มนี้จะบังคับเขียนทับไฟล์ CSV บนเซิร์ฟเวอร์
     if st.button("🔄 บังคับดึงข้อมูลใหม่ทันที", type="primary"):
         with st.spinner("กำลังเปิดเบราว์เซอร์และเขียนทับไฟล์ CSV..."):
             scrape_and_save_to_csv(limit=scrape_limit)
